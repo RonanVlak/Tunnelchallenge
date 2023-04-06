@@ -1,51 +1,11 @@
-#include "zmod4410.h"
+#include <Wire.h>
 
-zmod44xx_dev_t dev;
-int8_t ret;
-uint8_t stabilization_samples = 0;
-uint8_t zmod44xx_status = 0;
-uint8_t adc_result[30] = { 0 };
-float rmox[1] = { 0 };
-
+int buf[16];
+int16_t val;
 void setup() {
   // put your setup code here, to run once:
-  pinMode(8, OUTPUT);
-  digitalWrite(8, LOW);
-  delay(50);
-  digitalWrite(8, HIGH);
   Serial.begin(9600);
   Wire.begin();
-  
-  delay(50);
-  dev.read = arduino_i2c_read;
-  dev.write = arduino_i2c_write;
-  dev.i2c_addr = ZMOD4410_I2C_ADDRESS;
-  
-  delay(10);
-
-  ret = zmod44xx_read_sensor_info(&dev);
-  if (ret) {
-    Serial.print(ret);
-    Serial.println("   error:1");
-  }
-   
-  ret = zmod44xx_init_sensor(&dev);
-  if (ret) {
-    Serial.print(ret);
-    Serial.println("   error:2");
-  }
-
-  ret = zmod44xx_init_measurement(&dev);
-  if (ret) {
-    Serial.print(ret);
-    Serial.println("   error:3");
-  }
-
-  ret = zmod44xx_start_measurement(&dev);
-  if (ret) {
-    Serial.print(ret);
-    Serial.println("   error:4");
-  }
 }
 
 
@@ -55,53 +15,43 @@ void readCO() {
   Serial.println(sensorCO);
 }
 
+float readSensor(uint8_t regAddr) {
+  buf[0] = 0x00;
+    Wire.beginTransmission(0x40 << 1) ;
+    Wire.write(regAddr);
+    Wire.write(1);
+    Wire.endTransmission();
 
-void readCO2() {
-  ret = zmod44xx_read_status(&dev, &zmod44xx_status);
-
-  if (ret)
-  { 
-    Serial.print(ret);
-    Serial.println("   error:5");
-  }
-
-  if (STATUS_SEQUENCER_RUNNING_MASK & zmod44xx_status)
-  {
-    delay(5);
-  }
-
-  ret = zmod44xx_read_adc_results(&dev, adc_result);
-  if (ret)
-  { 
-    Serial.print(ret);
-    Serial.println("   error:6");
-  }
-
-  /* start a new measurement before result calculation */
-  
-  ret = zmod44xx_start_measurement(&dev);
-  if (ret)
-  {
-    Serial.print(ret);
-    Serial.println("   error:7");
-  }
-
-  ret = zmod44xx_calc_rmox(&dev, adc_result, rmox);
-  if (ret)
-  { 
-    Serial.print(ret);
-    Serial.println("   error:8");
-  }
-  Serial.print("C2 ");
-  int CO2_val = int(rmox[0]);
-  Serial.println(rmox[0]);
+    Wire.requestFrom(0x40 << 1, 2);
+    buf[0] = Wire.read();
+    val = ((uint16_t) buf[0] << 8);
+    val |= buf[1];
+    
+  return val;
+}
+void readTemp() {
+  uint16_t temp;
+  float temperature;
+  temp = readSensor(0xE3);
+  temperature = ((175.72*temp)/65536) - 46.85; //calculate temperature according to datasheet
+  Serial.print("TP ");
+  Serial.println(temperature);
 }
 
-
+void readHumid() {
+  uint16_t temp;
+  float humidity;
+  temp = readSensor(0xE5);
+  humidity = ((125*temp)/65536) - 6; //calculate humidity according to datasheet
+  Serial.print("HM ");
+  Serial.println(humidity);
+}
 void loop() {
   readCO();
-  delay(1000);
-  readCO2();
-  delay(1000);
+  delay(500);
+  readTemp();
+  delay(500);
+  readHumid();
+  delay(500);
   }
   
